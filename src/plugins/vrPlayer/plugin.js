@@ -54,7 +54,18 @@ export class VrPlayer {
             script.src = 'https://aframe.io/releases/1.6.0/aframe.min.js';
             script.onload = () => {
                 VrPlayer.#aframeLoaded = true;
-                resolve();
+                // Wait for custom elements to be fully registered
+                if (window.customElements && customElements.get('a-scene')) {
+                    resolve();
+                } else {
+                    // Poll until registered
+                    const check = setInterval(() => {
+                        if (customElements.get('a-scene')) {
+                            clearInterval(check);
+                            resolve();
+                        }
+                    }, 50);
+                }
             };
             document.head.appendChild(script);
         });
@@ -232,6 +243,7 @@ export class VrPlayer {
 
         document.body.appendChild(container);
 
+        // Let A-Frame custom elements initialize
         this.#mediaElement = document.getElementById('vrVideo');
         this.#vrScene = document.getElementById('vrScene');
         this.#vrSky = document.getElementById('vrSky');
@@ -273,6 +285,7 @@ export class VrPlayer {
 
         // Fullscreen fix: make a-scene fullscreen instead of canvas
         setTimeout(() => {
+            const scene = this.#vrScene;
             const canvas = scene?.querySelector('canvas');
             if (canvas?.requestFullscreen) {
                 const orig = canvas.requestFullscreen.bind(canvas);
