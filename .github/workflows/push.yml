@@ -14,6 +14,3 @@ jobs:
     uses: ./.github/workflows/__package.yml
     with:
       commit: ${{ github.sha }}
-      commit: ${{ github.sha }}
-      workflow_run_id: ${{ github.run_id }}
-      comment: false
