@@ -1,42 +1,18 @@
 ﻿@echo off
 setlocal enabledelayedexpansion
-REM ============================================================
-REM build-deploy.cmd - Build jellyfin-web and deploy to Jellyfin
-REM Usage: .\build-deploy.cmd
-REM ============================================================
-
 cd /d "%~dp0"
 
-REM ── 1. Install dependencies ──
-echo [1/3] Installing dependencies... (mirror: npmmirror.com)
-call .\nenv.cmd npm ci --no-audit --prefer-offline
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: npm ci failed
-    exit /b 1
+if not exist "node_modules\.bin\webpack.cmd" (
+    echo [0/2] Rebuilding node_modules\.bin...
+    call .\nenv.cmd npm rebuild
 )
 
-REM ── 2. Build production ──
-echo.
-echo [2/3] Building...
-call .\nenv.cmd npm run build:production
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: build failed
-    exit /b 1
-)
+echo [1/2] Building...
+set "PATH=%~dp0.nenv\node-v24.18.0-win-x64;%PATH%"
+set NODE_ENV=production
+node "%~dp0node_modules\webpack\bin\webpack.js" --config "%~dp0webpack.prod.js"
+if %ERRORLEVEL% neq 0 exit /b 1
 
-REM ── 3. Deploy to Jellyfin ──
-echo.
-echo [3/3] Deploying to D:\Jellyfin\system\jellyfin-web...
-set "TARGET=D:\Jellyfin\system\jellyfin-web"
-if not exist "%TARGET%" mkdir "%TARGET%"
-robocopy dist "%TARGET%" /MIR /NJH /NJS /NP /NS /NC /NFL /NDL >nul
-if %ERRORLEVEL% geq 8 (
-    echo ERROR: deploy failed
-    exit /b 1
-)
-
-echo.
-echo ========================================
-echo   Build & Deploy Complete!
-echo   Target: %TARGET%
-echo ========================================
+echo [2/2] Deploying...
+robocopy "%~dp0dist" "D:\Jellyfin\system\jellyfin-web" /MIR /NJH /NJS /NP /NS /NC /NFL /NDL
+echo Done.
