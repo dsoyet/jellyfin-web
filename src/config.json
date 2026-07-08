@@ -46,6 +46,7 @@
     "sessionPlayer/plugin",
     "chromecastPlayer/plugin",
     "stillWatching/plugin",
-    "syncPlay/plugin"
+    "syncPlay/plugin",
+    "vrPlayer/plugin"
   ]
 }

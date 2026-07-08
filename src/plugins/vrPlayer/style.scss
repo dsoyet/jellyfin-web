@@ -1,0 +1,83 @@
+﻿#vrPlayerContainer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 99999;
+    background: #000;
+    overflow: hidden;
+}
+
+#vrPlayerContainer a-scene {
+    width: 100%;
+    height: 100%;
+}
+
+#vrSubOverlay {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99999999;
+    pointer-events: none;
+    text-align: center;
+    max-width: 90%;
+
+    span {
+        color: #fff;
+        font-size: 26px;
+        font-weight: bold;
+        display: inline-block;
+        line-height: 1.5;
+        text-shadow:
+            -1px -1px 0 #000, 1px -1px 0 #000,
+            -1px 1px 0 #000, 1px 1px 0 #000,
+            0 0 8px #000, 0 0 16px #000;
+    }
+}
+
+#vrProgressBar {
+    position: fixed;
+    bottom: 20px;
+    left: 10%;
+    width: 80%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    z-index: 10000;
+}
+
+#vrProgressFill {
+    height: 100%;
+    background: #1e90ff;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.1s linear;
+}
+
+#vrStats {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.75);
+    color: #0f0;
+    font: 11px monospace;
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: none;
+    line-height: 1.6;
+    pointer-events: none;
+}
+
+.vrPlayerActive {
+    // Hide Jellyfin's normal UI when VR is active
+    .skinHeader,
+    .mainDrawer,
+    .nowPlayingBar,
+    .videoPlayerContainer,
+    .upNextContainer {
+        display: none !important;
+    }
+}
