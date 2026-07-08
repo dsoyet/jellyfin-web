@@ -72,10 +72,8 @@ export class VrPlayer {
     }
 
     canPlayItem(item) {
-        // Only intercept VR-tagged content or SBS 180° videos
-        if (item?.MediaType !== 'Video') return false;
-        const tags = item?.Tags || [];
-        return tags.includes('VR') || tags.includes('180°') || tags.includes('SBS');
+        // Handle all video playback
+        return item?.MediaType === 'Video';
     }
 
     currentTime(val) {
