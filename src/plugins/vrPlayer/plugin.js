@@ -212,12 +212,10 @@ export class VrPlayer {
         const container = document.createElement('div');
         container.id = 'vrPlayerContainer';
         container.innerHTML = `
-            <a-scene embedded id="vrScene" vr-mode-ui="enabled:true">
-                <a-assets>
-                    <video id="vrVideo" crossorigin="anonymous" playsinline autoplay></video>
-                </a-assets>
-                <a-sky id="vrSky" src="#vrVideo" phi-start="180" phi-length="180" radius="5000"></a-sky>
-                <a-video id="vrFlat" src="#vrVideo" width="23" height="12.9375"
+            <video id="vrVideo" crossorigin="anonymous" playsinline style="display:none"></video>
+            <a-scene id="vrScene" vr-mode-ui="enabled:true">
+                <a-sky id="vrSky" phi-start="180" phi-length="180" radius="5000"></a-sky>
+                <a-video id="vrFlat" width="23" height="12.9375"
                     position="0 0 -7.7" visible="false"></a-video>
                 <a-camera id="vrCamera" position="0 0 0"
                     wasd-controls="acceleration:50"
@@ -243,12 +241,15 @@ export class VrPlayer {
         this.#progressFill = document.getElementById('vrProgressFill');
         this.#statsEl = document.getElementById('vrStats');
 
-        // 180° SBS UV fix: use left-eye portion
-        const scene = this.#vrScene;
+        // 180° SBS UV fix: use left-eye portion (deferred until sky loads)
         const fixUV = () => {
             const sky = this.#vrSky;
-            const mesh = sky?.getObject3D?.('mesh');
-            if (!mesh) { sky?.addEventListener?.('loaded', fixUV); return; }
+            if (!sky) return;
+            const mesh = sky.getObject3D?.('mesh');
+            if (!mesh) {
+                sky.addEventListener?.('loaded', fixUV);
+                return;
+            }
             const uv = mesh.geometry.attributes.uv;
             if (!uv) return;
             for (let i = 0; i < uv.count; i++) {
@@ -256,7 +257,8 @@ export class VrPlayer {
             }
             uv.needsUpdate = true;
         };
-        fixUV();
+        // Try after a short delay when HLS has bound the video
+        setTimeout(fixUV, 500);
 
         // Auto-detect VR based on aspect ratio
         this.#mediaElement.addEventListener('loadedmetadata', () => {
@@ -328,6 +330,9 @@ export class VrPlayer {
 
             return new Promise((resolve) => {
                 this.#hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // Bind video to A-Frame entities after HLS is ready
+                    this.#vrSky?.setAttribute('src', `#vrVideo`);
+                    this.#vrFlat?.setAttribute('src', `#vrVideo`);
                     media.play().catch(() => {});
                     resolve();
                 });
@@ -341,6 +346,8 @@ export class VrPlayer {
             });
         } else {
             media.src = url;
+            this.#vrSky?.setAttribute('src', `#vrVideo`);
+            this.#vrFlat?.setAttribute('src', `#vrVideo`);
             media.play().catch(() => {});
         }
     }
