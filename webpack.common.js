@@ -104,12 +104,12 @@ const config = {
             resourceRegExp: /worker-bundle\.js$/,
             contextRegExp: /libarchive.js/
         }),
-        new ForkTsCheckerWebpackPlugin({
-            typescript: {
-                configFile: path.resolve(__dirname, 'tsconfig.json')
-            },
-            async: true
-        }),
+        // new ForkTsCheckerWebpackPlugin({
+        //     typescript: {
+        //         configFile: path.resolve(__dirname, 'tsconfig.json')
+        //     },
+        //     async: true
+        // }),
         new MiniCssExtractPlugin({
             filename: pathData => {
                 if (pathData.chunk?.name?.startsWith('themes/')) {
