@@ -107,7 +107,8 @@ const config = {
         new ForkTsCheckerWebpackPlugin({
             typescript: {
                 configFile: path.resolve(__dirname, 'tsconfig.json')
-            }
+            },
+            async: true
         }),
         new MiniCssExtractPlugin({
             filename: pathData => {
