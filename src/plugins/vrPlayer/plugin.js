@@ -153,9 +153,12 @@ export class VrPlayer {
         this.#streamInfo = options;
 
         loading.show();
+
+        // Build DOM BEFORE loading A-Frame (like userscript: innerHTML then upgrade)
+        this.#createSceneDOM();
         await VrPlayer.#ensureAframe();
         await VrPlayer.#ensureHls();
-        this.#createScene();
+        this.#bindSceneRefs();
         this.#registerShortcuts();
         this.#startStats();
 
@@ -206,77 +209,37 @@ export class VrPlayer {
 
     // ── A-Frame scene ──
 
-    #createScene() {
+    #createSceneDOM() {
         this.#isVR = true;
 
         const container = document.createElement('div');
         container.id = 'vrPlayerContainer';
-
-        // Use createElement for custom elements (innerHTML breaks lifecycle)
-        const video = document.createElement('video');
-        video.id = 'vrVideo';
-        video.crossOrigin = 'anonymous';
-        video.playsInline = true;
-        video.style.display = 'none';
-
-        const scene = document.createElement('a-scene');
-        scene.id = 'vrScene';
-        scene.setAttribute('vr-mode-ui', 'enabled:true');
-        scene.setAttribute('embedded', '');
-        scene.setAttribute('light', 'defaultLightsEnabled: false');
-
-        const sky = document.createElement('a-sky');
-        sky.id = 'vrSky';
-        sky.setAttribute('phi-start', '180');
-        sky.setAttribute('phi-length', '180');
-        sky.setAttribute('radius', '5000');
-
-        const flat = document.createElement('a-video');
-        flat.id = 'vrFlat';
-        flat.setAttribute('width', '23');
-        flat.setAttribute('height', '12.9375');
-        flat.setAttribute('position', '0 0 -7.7');
-        flat.setAttribute('visible', 'false');
-
-        const camera = document.createElement('a-camera');
-        camera.id = 'vrCamera';
-        camera.setAttribute('position', '0 0 0');
-        camera.setAttribute('wasd-controls', 'acceleration:50');
-        camera.setAttribute('look-controls', 'reverseMouseDrag:true');
-
-        scene.appendChild(sky);
-        scene.appendChild(flat);
-        scene.appendChild(camera);
-
-        const subOverlay = document.createElement('div');
-        subOverlay.id = 'vrSubOverlay';
-        subOverlay.style.display = 'none';
-        subOverlay.innerHTML = '<span></span>';
-
-        const progressBar = document.createElement('div');
-        progressBar.id = 'vrProgressBar';
-        progressBar.style.display = 'none';
-        progressBar.innerHTML = '<div id="vrProgressFill"></div>';
-
-        const stats = document.createElement('div');
-        stats.id = 'vrStats';
-
-        container.appendChild(video);
-        container.appendChild(scene);
-        container.appendChild(subOverlay);
-        container.appendChild(progressBar);
-        container.appendChild(stats);
-
+        container.innerHTML = `
+            <video id="vrVideo" crossorigin="anonymous" playsinline style="display:none"></video>
+            <a-scene id="vrScene" vr-mode-ui="enabled:true" embedded>
+                <a-sky id="vrSky" phi-start="180" phi-length="180" radius="5000"></a-sky>
+                <a-video id="vrFlat" width="23" height="12.9375"
+                    position="0 0 -7.7" visible="false"></a-video>
+                <a-camera id="vrCamera" position="0 0 0"
+                    wasd-controls="acceleration:50"
+                    look-controls="reverseMouseDrag:true"></a-camera>
+            </a-scene>
+            <div id="vrSubOverlay" style="display:none"><span></span></div>
+            <div id="vrProgressBar" style="display:none"><div id="vrProgressFill"></div></div>
+            <div id="vrStats"></div>
+        `;
         document.body.appendChild(container);
+    }
 
-        this.#mediaElement = video;
-        this.#vrScene = scene;
-        this.#vrSky = sky;
-        this.#vrFlat = flat;
-        this.#vrCamera = camera;
-        this.#progressBar = progressBar;
+    #bindSceneRefs() {
+        this.#mediaElement = document.getElementById('vrVideo');
+        this.#vrScene = document.getElementById('vrScene');
+        this.#vrSky = document.getElementById('vrSky');
+        this.#vrFlat = document.getElementById('vrFlat');
+        this.#vrCamera = document.getElementById('vrCamera');
+        this.#progressBar = document.getElementById('vrProgressBar');
         this.#progressFill = document.getElementById('vrProgressFill');
-        this.#statsEl = stats;
+        this.#statsEl = document.getElementById('vrStats');
 
         // 180° SBS UV fix: use left-eye portion (deferred until sky loads)
         const fixUV = () => {
