@@ -223,6 +223,7 @@ export class VrPlayer {
         scene.id = 'vrScene';
         scene.setAttribute('vr-mode-ui', 'enabled:true');
         scene.setAttribute('embedded', '');
+        scene.setAttribute('light', 'defaultLightsEnabled: false');
 
         const sky = document.createElement('a-sky');
         sky.id = 'vrSky';
