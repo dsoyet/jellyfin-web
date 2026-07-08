@@ -6,7 +6,7 @@ import { appHost } from '../../components/apphost';
 import browser from '../../scripts/browser';
 import Events from '../../utils/events.ts';
 import loading from '../../components/loading/loading';
-import { PluginType } from 'types/plugin';
+import { PluginType } from '../../constants/pluginType';
 import globalize from '../../lib/globalize';
 
 function requireHlsPlayer() {
