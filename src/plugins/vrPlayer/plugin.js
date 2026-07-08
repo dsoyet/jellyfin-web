@@ -6,7 +6,6 @@ import { appHost } from '../../components/apphost';
 import browser from '../../scripts/browser';
 import Events from '../../utils/events.ts';
 import loading from '../../components/loading/loading';
-import { PluginType } from '../../constants/pluginType';
 import globalize from '../../lib/globalize';
 
 function requireHlsPlayer() {
@@ -21,11 +20,15 @@ function requireHlsPlayer() {
 
 export class VrPlayer {
     name = 'VR Player';
-    type = PluginType.MediaPlayer;
+    type = 'mediaplayer';
     id = 'vrplayer';
     priority = 0;
     isLocalPlayer = true;
     isFetching = false;
+
+    constructor() {
+        console.log('[VrPlayer] Plugin constructed, type=', this.type);
+    }
 
     #mediaElement = null;
     #hls = null;
@@ -68,12 +71,15 @@ export class VrPlayer {
     }
 
     canPlayMediaType(mediaType) {
-        return mediaType === 'Video';
+        const ok = mediaType === 'Video';
+        console.log('[VrPlayer] canPlayMediaType', mediaType, '=', ok);
+        return ok;
     }
 
     canPlayItem(item) {
-        // Handle all video playback
-        return item?.MediaType === 'Video';
+        const ok = item?.MediaType === 'Video';
+        console.log('[VrPlayer] canPlayItem', item?.Name, item?.MediaType, '=', ok);
+        return ok;
     }
 
     currentTime(val) {
