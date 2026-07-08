@@ -207,16 +207,25 @@ export class VrPlayer {
         }
     }
 
-    // ── A-Frame scene ──
+    // ── A-Frame scene (isolated in iframe to avoid Jellyfin DOM conflicts) ──
 
     #createSceneDOM() {
         this.#isVR = true;
 
-        // Suppress A-Frame doConnectedCallback errors from default lights
-        const origOnerror = window.onerror;
+        // Suppress A-Frame doConnectedCallback errors from primitives in Promise chains
+        const handler = (e) => {
+            const msg = e?.reason?.message || e?.message || String(e);
+            if (msg.includes('doConnectedCallback')) {
+                e?.preventDefault?.();
+                return true;
+            }
+            return false;
+        };
+        window.addEventListener('unhandledrejection', handler);
+        const orig = window.onerror;
         window.onerror = (msg) => {
             if (typeof msg === 'string' && msg.includes('doConnectedCallback')) return true;
-            return origOnerror?.call(window, ...arguments) ?? false;
+            return orig?.apply(window, arguments) ?? false;
         };
 
         const container = document.createElement('div');
