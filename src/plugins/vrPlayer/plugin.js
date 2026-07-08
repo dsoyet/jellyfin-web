@@ -26,10 +26,6 @@ export class VrPlayer {
     isLocalPlayer = true;
     isFetching = false;
 
-    constructor() {
-        console.log('[VrPlayer] Plugin constructed, type=', this.type);
-    }
-
     #mediaElement = null;
     #hls = null;
     #vrScene = null;
@@ -71,15 +67,11 @@ export class VrPlayer {
     }
 
     canPlayMediaType(mediaType) {
-        const ok = mediaType === 'Video';
-        console.log('[VrPlayer] canPlayMediaType', mediaType, '=', ok);
-        return ok;
+        return mediaType === 'Video';
     }
 
     canPlayItem(item) {
-        const ok = item?.MediaType === 'Video';
-        console.log('[VrPlayer] canPlayItem', item?.Name, item?.MediaType, '=', ok);
-        return ok;
+        return item?.MediaType === 'Video';
     }
 
     currentTime(val) {
