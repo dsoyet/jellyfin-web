@@ -212,6 +212,13 @@ export class VrPlayer {
     #createSceneDOM() {
         this.#isVR = true;
 
+        // Suppress A-Frame doConnectedCallback errors from default lights
+        const origOnerror = window.onerror;
+        window.onerror = (msg) => {
+            if (typeof msg === 'string' && msg.includes('doConnectedCallback')) return true;
+            return origOnerror?.call(window, ...arguments) ?? false;
+        };
+
         const container = document.createElement('div');
         container.id = 'vrPlayerContainer';
         container.innerHTML = `
