@@ -1,12 +1,7 @@
-﻿import './style.scss';
-
 import { playbackManager } from '../../components/playback/playbackmanager';
 import profileBuilder from '../../scripts/browserDeviceProfile';
-import { appHost } from '../../components/apphost';
-import browser from '../../scripts/browser';
 import Events from '../../utils/events.ts';
 import loading from '../../components/loading/loading';
-import globalize from '../../lib/globalize';
 
 function requireHlsPlayer() {
     return import(/* webpackChunkName: "hls.js" */ 'hls.js/dist/hls.js')
@@ -26,448 +21,164 @@ export class VrPlayer {
     isLocalPlayer = true;
     isFetching = false;
 
-    #mediaElement = null;
-    #hls = null;
-    #vrScene = null;
-    #vrSky = null;
-    #vrFlat = null;
-    #vrCamera = null;
-    #isVR = true;
-    #currentSrc = null;
-    #streamInfo = null;
-    #progressBar = null;
-    #progressFill = null;
-    #progressTimer = 0;
-    #statsEl = null;
-    #fpsCnt = 0;
-    #lastFps = 0;
-    #fps = 0;
-    #rafId = 0;
+    _media = null;
+    _hls = null;
+    _container = null;
+    _playing = false;
+    _keyHandler = null;
 
-    static #aframeLoaded = false;
-    static #hlsLib = null;
-
-    static async #ensureAframe() {
-        if (VrPlayer.#aframeLoaded) return;
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = 'https://aframe.io/releases/1.6.0/aframe.min.js';
-            script.onload = () => {
-                VrPlayer.#aframeLoaded = true;
-                resolve();
-            };
-            document.head.appendChild(script);
-        });
+    static _hlsLib = null;
+    static async _initHls() {
+        if (VrPlayer._hlsLib) return VrPlayer._hlsLib;
+        VrPlayer._hlsLib = await requireHlsPlayer();
+        return VrPlayer._hlsLib;
     }
 
-    static async #ensureHls() {
-        if (VrPlayer.#hlsLib) return VrPlayer.#hlsLib;
-        VrPlayer.#hlsLib = await requireHlsPlayer();
-        return VrPlayer.#hlsLib;
-    }
+    canPlayMediaType(t) { return t === 'Video'; }
+    canPlayItem(item) { return item && item.MediaType === 'Video'; }
 
-    canPlayMediaType(mediaType) {
-        return mediaType === 'Video';
-    }
-
-    canPlayItem(item) {
-        return item?.MediaType === 'Video';
-    }
-
-    currentTime(val) {
-        const media = this.#mediaElement;
-        if (media) {
-            if (val != null) {
-                media.currentTime = val;
-            }
-            return media.currentTime;
-        }
-        return 0;
-    }
-
-    duration() {
-        return this.#mediaElement?.duration ?? 0;
-    }
-
-    paused() {
-        return this.#mediaElement?.paused ?? true;
-    }
-
-    volume(val) {
-        const media = this.#mediaElement;
-        if (media) {
-            if (val != null) {
-                media.volume = val;
-            }
-            return media.volume;
-        }
-        return 1;
-    }
-
-    setMute(mute) {
-        if (this.#mediaElement) {
-            this.#mediaElement.muted = mute;
-        }
-    }
-
-    isMuted() {
-        return this.#mediaElement?.muted ?? false;
-    }
-
-    getSupportedFeatures() {
-        return ['PlaybackRate'];
-    }
+    currentTime(v) { var m = this._media; if (m) { if (v != null) m.currentTime = v; return m.currentTime; } return 0; }
+    duration() { var m = this._media; return m ? m.duration : 0; }
+    paused() { var m = this._media; return m ? m.paused : true; }
+    volume(v) { var m = this._media; if (m) { if (v != null) m.volume = v; return m.volume; } return 1; }
+    setMute(m) { if (this._media) this._media.muted = m; }
+    isMuted() { var m = this._media; return m ? m.muted : false; }
+    getSupportedFeatures() { return ['PlaybackRate']; }
 
     getDeviceProfile(item) {
-        return VrPlayer.getDeviceProfileInternal(item).then(profile => ({
-            PlayableMediaTypes: ['Video'],
-            ...profile
-        }));
-    }
-
-    static getDeviceProfileInternal(_item) {
-        const profile = profileBuilder({});
-        profile.MaxStaticBitrate = 200000000;
-        profile.MusicStreamingTranscodingBitrate = 200000000;
-        return Promise.resolve(profile);
-    }
-
-    getStats() {
-        const media = this.#mediaElement;
-        if (!media) return Promise.resolve({ categories: [] });
-
-        return Promise.resolve({
-            categories: [{
-                stats: [
-                    { label: 'Resolution', value: `${media.videoWidth || '--'}x${media.videoHeight || '--'}` },
-                    { label: 'Mode', value: this.#isVR ? 'VR 180°' : '2D Flat' }
-                ],
-                type: 'video'
-            }]
+        return VrPlayer._profile(item).then(function(p) {
+            p.PlayableMediaTypes = ['Video'];
+            return p;
         });
     }
 
-    // ── Main lifecycle ──
+    static _profile() {
+        var p = profileBuilder({});
+        p.MaxStaticBitrate = 200000000;
+        return Promise.resolve(p);
+    }
 
-    async play(options) {
-        this.#streamInfo = options;
+    async play(opts) {
+        if (this._playing) return;
+        this._playing = true;
+        console.log('[VR] play() called, url=', opts.url);
+        try {
+            loading.show();
+            await VrPlayer._initHls();
+            console.log('[VR] HLS ready');
+            this._build();
+            this._keys(true);
 
-        loading.show();
+            var url = opts.url;
+            await this._load(url);
 
-        // Build DOM BEFORE loading A-Frame (like userscript: innerHTML then upgrade)
-        this.#createSceneDOM();
-        await VrPlayer.#ensureAframe();
-        await VrPlayer.#ensureHls();
-        this.#bindSceneRefs();
-        this.#registerShortcuts();
-        this.#startStats();
+            loading.hide();
+            console.log('[VR] loaded, triggering playing');
+            Events.trigger(this, 'playing');
 
-        const streamInfo = playbackManager.getPlayerState(this).streamInfo;
-        const url = streamInfo.url;
-        const mimeType = streamInfo.mediaSource?.Container === 'mpd' ? 'application/dash+xml' : 'application/x-mpegURL';
-
-        await this.#setSrc(url, mimeType);
-
-        document.body.classList.add('vrPlayerActive');
-        loading.hide();
-
-        Events.trigger(this, 'playing');
-
-        if (options.playerStartPositionTicks) {
-            const seconds = options.playerStartPositionTicks / 10000000;
-            this.#mediaElement.currentTime = seconds;
+            if (opts.playerStartPositionTicks) {
+                this._media.currentTime = opts.playerStartPositionTicks / 10000000;
+            }
+        } catch (e) {
+            console.error('[VR] fail:', e);
+            loading.hide();
         }
     }
 
     stop() {
-        this.#destroyHls();
-        this.#destroyScene();
-        this.#stopStats();
-        document.body.classList.remove('vrPlayerActive');
+        console.log('[VR] stop()');
+        this._playing = false;
+        if (this._hls) { this._hls.destroy(); this._hls = null; }
+        if (this._container) { this._container.remove(); this._container = null; }
+        this._media = null;
+        this._keys(false);
         Events.trigger(this, 'stopped');
     }
 
-    pause() {
-        this.#mediaElement?.pause();
-        Events.trigger(this, 'pause');
-    }
+    pause() { if (this._media) this._media.pause(); Events.trigger(this, 'pause'); }
+    unpause() { if (this._media) this._media.play().catch(function(){}); Events.trigger(this, 'unpause'); }
+    toggleVr() {}
 
-    unpause() {
-        this.#mediaElement?.play().catch(() => {});
-        Events.trigger(this, 'unpause');
-    }
+    _build() {
+        console.log('[VR] _build()');
+        var div = document.createElement('div');
+        div.id = 'vrPlayerContainer';
+        div.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;background:#000';
+        document.body.appendChild(div);
+        this._container = div;
 
-    toggleVr() {
-        this.#isVR = !this.#isVR;
-        if (this.#vrSky) this.#vrSky.setAttribute('visible', this.#isVR);
-        if (this.#vrFlat) this.#vrFlat.setAttribute('visible', !this.#isVR);
-        if (this.#vrCamera) {
-            this.#vrCamera.setAttribute('wasd-controls',
-                this.#isVR ? 'acceleration:50' : 'enabled:false');
-        }
-    }
+        var vid = document.createElement('video');
+        vid.crossOrigin = 'anonymous';
+        vid.playsInline = true;
+        vid.controls = true;
+        vid.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);max-width:90vw;max-height:90vh';
+        div.appendChild(vid);
+        this._media = vid;
 
-    // ── A-Frame scene (isolated in iframe to avoid Jellyfin DOM conflicts) ──
-
-    #createSceneDOM() {
-        this.#isVR = true;
-
-        // Suppress A-Frame doConnectedCallback errors from primitives in Promise chains
-        const handler = (e) => {
-            const msg = e?.reason?.message || e?.message || String(e);
-            if (msg.includes('doConnectedCallback')) {
-                e?.preventDefault?.();
-                return true;
-            }
-            return false;
-        };
-        window.addEventListener('unhandledrejection', handler);
-        const orig = window.onerror;
-        window.onerror = (msg) => {
-            if (typeof msg === 'string' && msg.includes('doConnectedCallback')) return true;
-            return orig?.apply(window, arguments) ?? false;
-        };
-
-        const container = document.createElement('div');
-        container.id = 'vrPlayerContainer';
-        container.innerHTML = `
-            <video id="vrVideo" crossorigin="anonymous" playsinline style="display:none"></video>
-            <a-scene id="vrScene" vr-mode-ui="enabled:true" embedded>
-                <a-sky id="vrSky" phi-start="180" phi-length="180" radius="5000"></a-sky>
-                <a-video id="vrFlat" width="23" height="12.9375"
-                    position="0 0 -7.7" visible="false"></a-video>
-                <a-camera id="vrCamera" position="0 0 0"
-                    wasd-controls="acceleration:50"
-                    look-controls="reverseMouseDrag:true"></a-camera>
-            </a-scene>
-            <div id="vrSubOverlay" style="display:none"><span></span></div>
-            <div id="vrProgressBar" style="display:none"><div id="vrProgressFill"></div></div>
-            <div id="vrStats"></div>
-        `;
-        document.body.appendChild(container);
-    }
-
-    #bindSceneRefs() {
-        this.#mediaElement = document.getElementById('vrVideo');
-        this.#vrScene = document.getElementById('vrScene');
-        this.#vrSky = document.getElementById('vrSky');
-        this.#vrFlat = document.getElementById('vrFlat');
-        this.#vrCamera = document.getElementById('vrCamera');
-        this.#progressBar = document.getElementById('vrProgressBar');
-        this.#progressFill = document.getElementById('vrProgressFill');
-        this.#statsEl = document.getElementById('vrStats');
-
-        // 180° SBS UV fix: use left-eye portion (deferred until sky loads)
-        const fixUV = () => {
-            const sky = this.#vrSky;
-            if (!sky) return;
-            const mesh = sky.getObject3D?.('mesh');
-            if (!mesh) {
-                sky.addEventListener?.('loaded', fixUV);
-                return;
-            }
-            const uv = mesh.geometry.attributes.uv;
-            if (!uv) return;
-            for (let i = 0; i < uv.count; i++) {
-                uv.setX(i, uv.getX(i) * 0.5);
-            }
-            uv.needsUpdate = true;
-        };
-        // Try after a short delay when HLS has bound the video
-        setTimeout(fixUV, 500);
-
-        // Auto-detect VR based on aspect ratio
-        this.#mediaElement.addEventListener('loadedmetadata', () => {
-            const ratio = this.#mediaElement.videoWidth / this.#mediaElement.videoHeight;
-            const isVr = ratio > 1.8 && ratio < 2.2;
-            if (isVr !== this.#isVR) {
-                this.#isVR = isVr;
-                this.#vrSky.setAttribute('visible', isVr);
-                this.#vrFlat.setAttribute('visible', !isVr);
-            }
-        });
-
-        // Fullscreen fix: make a-scene fullscreen instead of canvas
-        setTimeout(() => {
-            const scene = this.#vrScene;
-            const canvas = scene?.querySelector('canvas');
-            if (canvas?.requestFullscreen) {
-                const orig = canvas.requestFullscreen.bind(canvas);
-                canvas.requestFullscreen = () => {
-                    return scene.requestFullscreen ? scene.requestFullscreen() : orig();
-                };
-            }
-        }, 2000);
-
-        // Progress on timeupdate
-        this.#mediaElement.addEventListener('timeupdate', () => this.#updateProgress());
-        this.#mediaElement.addEventListener('ended', () => {
-            Events.trigger(this, 'stopped');
+        var self = this;
+        vid.addEventListener('ended', function() {
+            Events.trigger(self, 'stopped');
             playbackManager.nextTrack();
         });
-        this.#mediaElement.addEventListener('error', () => {
-            Events.trigger(this, 'error');
+        vid.addEventListener('error', function() {
+            Events.trigger(self, 'error');
         });
     }
 
-    #destroyScene() {
-        this.#mediaElement = null;
-        this.#vrScene = null;
-        this.#vrSky = null;
-        this.#vrFlat = null;
-        this.#vrCamera = null;
-        const container = document.getElementById('vrPlayerContainer');
-        if (container) container.remove();
-    }
+    async _load(url) {
+        var Hls = VrPlayer._hlsLib;
+        var vid = this._media;
+        var self = this;
 
-    // ── HLS playback ──
+        if (this._hls) { this._hls.destroy(); this._hls = null; }
 
-    async #setSrc(url, mimeType) {
-        const Hls = VrPlayer.#hlsLib;
-        const media = this.#mediaElement;
+        var isHls = /\.m3u8(\?|$)/i.test(url) || /\.m3u(\?|$)/i.test(url);
 
-        if (this.#hls) {
-            this.#hls.destroy();
-            this.#hls = null;
-        }
-
-        if (Hls.isSupported() && mimeType === 'application/x-mpegURL') {
-            this.#hls = new Hls({
-                maxBufferLength: 2,
-                maxMaxBufferLength: 2,
-                manifestLoadingMaxRetry: 1,
-                manifestLoadingRetryDelay: 500,
-                levelLoadingMaxRetry: 1,
-                levelLoadingRetryDelay: 500,
-                fragLoadingMaxRetry: 2,
-                fragLoadingRetryDelay: 300
+        if (isHls && Hls.isSupported()) {
+            console.log('[VR] HLS load:', url);
+            this._hls = new Hls({
+                maxBufferLength: 2, maxMaxBufferLength: 2,
+                manifestLoadingMaxRetry: 1, manifestLoadingRetryDelay: 500,
+                levelLoadingMaxRetry: 1, levelLoadingRetryDelay: 500,
+                fragLoadingMaxRetry: 2, fragLoadingRetryDelay: 300
             });
-            this.#hls.loadSource(url);
-            this.#hls.attachMedia(media);
+            this._hls.loadSource(url);
+            this._hls.attachMedia(vid);
 
-            return new Promise((resolve) => {
-                this.#hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    // Bind video to A-Frame entities after HLS is ready
-                    this.#vrSky?.setAttribute('src', `#vrVideo`);
-                    this.#vrFlat?.setAttribute('src', `#vrVideo`);
-                    media.play().catch(() => {});
+            return new Promise(function(resolve, reject) {
+                self._hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('[VR] MANIFEST_PARSED');
+                    vid.play().catch(function(){});
                     resolve();
                 });
-                this.#hls.on(Hls.Events.ERROR, (_event, data) => {
-                    if (data.fatal) {
-                        console.error('[VR Player] HLS fatal error', data);
-                        this.#destroyHls();
-                        Events.trigger(this, 'error');
-                    }
+                self._hls.on(Hls.Events.ERROR, function(_e, d) {
+                    console.error('[VR] HLS error:', d);
+                    if (d.fatal) { self.stop(); reject(d); }
                 });
             });
         } else {
-            media.src = url;
-            this.#vrSky?.setAttribute('src', `#vrVideo`);
-            this.#vrFlat?.setAttribute('src', `#vrVideo`);
-            media.play().catch(() => {});
+            console.log('[VR] native load:', url);
+            vid.src = url;
+            return vid.play().catch(function(){});
         }
     }
 
-    #destroyHls() {
-        if (this.#hls) {
-            this.#hls.destroy();
-            this.#hls = null;
-        }
-    }
-
-    // ── Keyboard shortcuts ──
-
-    #onKeyDown(e) {
-        if (!this.#mediaElement?.duration) return;
-
-        switch (e.key) {
-            case 'ArrowLeft':
-                this.#mediaElement.currentTime = Math.max(0, this.#mediaElement.currentTime - 30);
-                this.#showProgress();
-                e.preventDefault();
-                break;
-            case 'ArrowRight':
-                this.#mediaElement.currentTime = Math.min(this.#mediaElement.duration, this.#mediaElement.currentTime + 30);
-                this.#mediaElement.muted = false;
-                this.#showProgress();
-                e.preventDefault();
-                break;
-            case ' ':
-                this.#mediaElement.paused ? this.#mediaElement.play() : this.#mediaElement.pause();
-                e.preventDefault();
-                break;
-            case 'v':
-                if (!e.ctrlKey && !e.altKey) {
-                    this.toggleVr();
+    _keys(on) {
+        var self = this;
+        if (on) {
+            this._keyHandler = function(e) {
+                var v = self._media;
+                if (!v || !v.duration) return;
+                switch (e.key) {
+                    case 'ArrowLeft': v.currentTime = Math.max(0, v.currentTime - 30); e.preventDefault(); break;
+                    case 'ArrowRight': v.currentTime = Math.min(v.duration, v.currentTime + 30); v.muted = false; e.preventDefault(); break;
+                    case ' ': v.paused ? v.play() : v.pause(); e.preventDefault(); break;
                 }
-                break;
-            case 's':
-                if (!e.ctrlKey && !e.altKey) {
-                    const s = this.#statsEl;
-                    s.style.display = s.style.display === 'block' ? 'none' : 'block';
-                }
-                break;
-            default:
-                break;
+            };
+            window.addEventListener('keydown', this._keyHandler);
+        } else {
+            if (this._keyHandler) window.removeEventListener('keydown', this._keyHandler);
         }
-    }
-
-    #registerShortcuts() {
-        this._keyHandler = this.#onKeyDown.bind(this);
-        window.addEventListener('keydown', this._keyHandler);
-    }
-
-    #unregisterShortcuts() {
-        if (this._keyHandler) {
-            window.removeEventListener('keydown', this._keyHandler);
-        }
-    }
-
-    // ── Progress bar ──
-
-    #showProgress() {
-        if (!this.#progressBar) return;
-        this.#progressBar.style.display = 'block';
-        clearTimeout(this.#progressTimer);
-        this.#progressTimer = setTimeout(() => {
-            if (this.#progressBar) this.#progressBar.style.display = 'none';
-        }, 2000);
-    }
-
-    #updateProgress() {
-        const media = this.#mediaElement;
-        if (!media?.duration || !this.#progressFill) return;
-        this.#progressFill.style.width = (media.currentTime / media.duration * 100) + '%';
-    }
-
-    // ── Stats ──
-
-    #startStats() {
-        const loop = () => {
-            if (!this.#statsEl || this.#statsEl.style.display !== 'block') {
-                this.#rafId = requestAnimationFrame(loop);
-                return;
-            }
-            const v = this.#mediaElement;
-            if (!v?.duration) { this.#rafId = requestAnimationFrame(loop); return; }
-            this.#fpsCnt++;
-            const now = performance.now();
-            if (now - this.#lastFps >= 1000) {
-                this.#fps = this.#fpsCnt;
-                this.#fpsCnt = 0;
-                this.#lastFps = now;
-            }
-            this.#statsEl.innerHTML =
-                `${v.videoWidth || '--'}x${v.videoHeight || '--'} | FPS: ${this.#fps} | ${(v.currentTime || 0).toFixed(1)}/${(v.duration || 0).toFixed(1)}s<br>` +
-                `Dropped: ${v.webkitDroppedFrameCount ?? 0} | Mode: ${this.#isVR ? 'VR' : '2D'}`;
-            this.#rafId = requestAnimationFrame(loop);
-        };
-        this.#rafId = requestAnimationFrame(loop);
-    }
-
-    #stopStats() {
-        if (this.#rafId) cancelAnimationFrame(this.#rafId);
     }
 }
 
